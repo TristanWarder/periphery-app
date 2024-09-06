@@ -5,11 +5,13 @@ FROM nvcr.io/nvidia/l4t-jetpack:r36.3.0
 RUN apt update && apt upgrade -y
 
 # Setup python and cpp build tools
-RUN apt install cmake python-is-python3 python3-pip ninja-build -y
+RUN apt install cmake python-is-python3 python3-pip ninja-build protobuf-compiler sudo git -y
 
 # Add container user
 RUN useradd -m -d /home/periphery periphery
 RUN chown -R periphery:periphery /home/periphery
+RUN echo "periphery:periphery" | chpasswd
+RUN adduser periphery sudo
 
 WORKDIR /home/periphery
 
