@@ -2,32 +2,12 @@ const fs = require("fs").promises;
 const fsConstants = require("fs").constants;
 const dgram = require("node:dgram");
 const path = require('node:path');
-const os = require("os");
 
-// const socket = dgram.createSocket('udp4');
+const socket = dgram.createSocket('udp4');
 const PORT = 5555;
-let sockets = new Array();
-
-function findNetConfigs() {
-  let nets = os.networkInterfaces();
-  let netConfigs = new Array();
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name]) {
-      // Skip over non-IPv4 and internal (i.e. 127.0.0.1) addresses
-      if (net.family === 'IPv4') {
-        netConfigs.push({
-          ip: net.address,
-          netMask: net.netmask
-        });
-      }
-    }
-  }
-  return netConfigs;
-}
 
 const commands = require(path.resolve(__dirname, "./commands.json"));
 const commandMap = new Map();
-const discoveryMap = new Map();
 
 function getByteLength(string) {
   return string.length / 2;
@@ -137,55 +117,43 @@ function findFrames(bufArray) {
   return images;
 }
 
-async function initSockets() {
-  let nets = findNetConfigs();
-  for(let i = nets.length; i < nets.length + 1; i++) {
-    sockets.push(dgram.createSocket("udp4"));
-  }
-
-  let bound = new Array();
-  
-  sockets.forEach(sock => {
-    bound.push(new Promise((resolve, reject) => {
-      sock.on("listening", () => {
-        const address = sock.address();
-        console.log(`UDP socket listening on ${address.address}:${address.port}`);
-        resolve();
-      });
-    }));
+async function initSocket() {
+  // Attach message handler to socket
+  socket.on("message", async function (message, remote) {
+    // console.log(`Server received message from:"${remote.address}:${remote.port}`, message);
+    let uniqueLength = commands.unique.length / 2
+    if(message.slice(0, uniqueLength).toString("hex") !== commands.unique) return;
+    try {
+      let id = message.slice(uniqueLength, uniqueLength + 2).toString("hex");
+      let command = commandMap.get(id);
+      if(command) await command(socket, remote, message);
+    } catch(err) {
+      console.log("Failed to respond to message!", err);
+    }
   });
-  let discoverySock = sockets[sockets.length - 1];
-  discoverySock.bind({address: "0.0.0.0", port: PORT});
 
-  await Promise.all(bound);
-
-  sockets.forEach(sock => {
-    // let map = sock === discoverySock ? discoveryMap : commandMap;
-    let map = commandMap;
-    sock.on("message", async function (message, remote) {
-      // console.log(`Server received message from:"${remote.address}:${remote.port}`, message);
-      let uniqueLength = commands.unique.length / 2
-      if(message.slice(0, uniqueLength).toString("hex") !== commands.unique) return;
-      try {
-        let id = message.slice(uniqueLength, uniqueLength + 2).toString("hex");
-        let command = map.get(id);
-        if(command) await command(sock, remote, message);
-      } catch(err) {
-        console.log("Failed to respond to message!", err);
-      }
-    })
+  // Ensure socket binds and is listening
+  let sockConfigured = new Promise((resolve, reject) => {
+    socket.on("listening", () => {
+      const address = socket.address();
+      console.log(`UDP socket listening on ${address.address}:${address.port}`);
+      resolve();
+    });
+    socket.on("error", (err) => {
+      reject(err);
+    });
   });
+
+  socket.bind({address: "0.0.0.0", port: PORT});
+  return sockConfigured;
 }
 
 async function main() {
-  await initSockets();
+  await initSocket();
   console.log(`About to warmup model at ${ENGINE_PATH}`);
   yolov8.warmupModel(ENGINE_PATH);
-  // console.log("no error yahoo");
 
-  // let reader = await connectToStream("http://tristan-desktop.home:1181/stream.mjpg");
-  // let reader = await connectToStream("http://10.46.15.241:1181/stream.mjpg");
-  //let reader = await connectToStream("http://localhost:1181/stream.mjpg");
+  // MJPG Stream Test
   // let result = await reader.read();
 
   // let streamArray = new Array();
@@ -202,22 +170,3 @@ async function main() {
 }
 
 main();
-
-
-
-
-async function handleMessage(message, remote) {
-  console.log(`Server received message from:"${remote.address}:${remote.port}`, message);
-  let uniqueLength = commands.unique.length / 2
-  if(message.slice(0, uniqueLength).toString("hex") !== commands.unique) return;
-  try {
-    let id = message.slice(uniqueLength, uniqueLength + 2).toString("hex");
-    let socket = sockets.find(socket => {
-      socket.address 
-    });
-    let command = commandMap.get(id);
-    if(command) await command(socket, remote, message);
-  } catch(err) {
-    console.log("Failed to respond to message!", err);
-  }
-}
