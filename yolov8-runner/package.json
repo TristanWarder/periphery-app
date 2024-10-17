@@ -1,0 +1,15 @@
+{
+  "name": "yolov8-runner",
+  "version": "0.0.1",
+  "description": "Native module to run a YOLOv8 ML model",
+  "dependencies": {
+    "bindings": "^1.5.0",
+    "cmake-js": "^7.3.0",
+    "i": "^0.3.7",
+    "nan": "^2.20.0",
+    "npm": "^10.8.3"
+  },
+  "scripts": {
+    "install": "cmake-js -m compile"
+  }
+}
