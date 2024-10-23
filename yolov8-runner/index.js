@@ -41,8 +41,13 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
   if(message[headerLength]) {
     let frames = findFrames(imageArray);
     let frame = frames[frames.length - 1];
-    let results = yolov8.inference(frame);
-    if(results.length) {
+    let results = null;
+    try {
+      results = yolov8.inference(frame);
+    } catch(err) {
+      // console.log(err); throw away error
+    }
+    if(results && results.length) {
       sendingUnique = true;
       let data = Buffer.from(JSON.stringify(results));
       let length = Buffer.alloc(2);
@@ -53,7 +58,9 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
     imageArray = new Array();
   }
   if(!sendingUnique) {
-    response = Buffer.concat([header, Buffer.alloc(2)]);  // dummy
+    let length = Buffer.alloc(2);
+    length.writeInt16BE(0);
+    response = Buffer.concat([header, length]);  // dummy
   }
   return await sendResponse(sock, remote, response);
 });
