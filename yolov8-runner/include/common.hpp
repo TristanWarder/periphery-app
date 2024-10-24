@@ -124,10 +124,17 @@ struct Binding {
     std::string    name;
 };
 
-struct Object {
+struct DetectObject {
     cv::Rect_<float> rect;
     int              label = 0;
     float            prob  = 0.0;
+};
+
+struct PoseObject {
+    cv::Rect_<float>   rect;
+    int                label = 0;
+    float              prob  = 0.0;
+    std::vector<float> kps;
 };
 
 struct PreParam {

@@ -85,8 +85,8 @@ static napi_value RunInference(napi_env env, napi_callback_info info) {
   // cv::Size size{640, 640};
   model->copy_from_Mat(mat);
   model->infer();
-  std::vector<Object> objs;
-  model->postprocess(objs);
+  std::vector<DetectObject> objs;
+  model->detectPostprocess(objs);
   // std::cout << "Number of detected objects: " << objs.size() << std::endl;
 
   napi_value objArray;
@@ -96,7 +96,7 @@ static napi_value RunInference(napi_env env, napi_callback_info info) {
   status = napi_get_named_property(env, objArray, "push", &pushFunc);
   assert(status == napi_ok);
   (status == napi_ok);
-  for(Object obj : objs) {
+  for(DetectObject obj : objs) {
     napi_value object;
     status = napi_create_object(env, &object);
     assert(status == napi_ok);

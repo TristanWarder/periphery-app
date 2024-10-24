@@ -18,12 +18,13 @@ public:
     void                 copy_from_Mat(const cv::Mat& image, cv::Size& size);
     void                 letterbox(const cv::Mat& image, cv::Mat& out, cv::Size& size);
     void                 infer();
-    void                 postprocess(std::vector<Object>& objs);
-    static void          draw_objects(const cv::Mat&                                image,
-                                      cv::Mat&                                      res,
-                                      const std::vector<Object>&                    objs,
-                                      const std::vector<std::string>&               CLASS_NAMES,
-                                      const std::vector<std::vector<unsigned int>>& COLORS);
+    void                 detectPostprocess(std::vector<DetectObject>& objs);
+    void                 posePostprocess(std::vector<PoseObject>& objs, float score_thres = 0.25f, float iou_thres = 0.65f, int topk = 100);
+    // static void          draw_objects(const cv::Mat&                                image,
+    //                                   cv::Mat&                                      res,
+    //                                   const std::vector<DetectObject>&                    objs,
+    //                                   const std::vector<std::string>&               CLASS_NAMES,
+    //                                   const std::vector<std::vector<unsigned int>>& COLORS);
     int                  num_bindings;
     int                  num_inputs  = 0;
     int                  num_outputs = 0;
@@ -217,7 +218,7 @@ void YOLOv8::infer()
     cudaStreamSynchronize(this->stream);
 }
 
-void YOLOv8::postprocess(std::vector<Object>& objs)
+void YOLOv8::detectPostprocess(std::vector<DetectObject>& objs)
 {
     objs.clear();
     int*  num_dets = static_cast<int*>(this->host_ptrs[0]);
@@ -241,7 +242,7 @@ void YOLOv8::postprocess(std::vector<Object>& objs)
         y0 = clamp(y0 * ratio, 0.f, height);
         x1 = clamp(x1 * ratio, 0.f, width);
         y1 = clamp(y1 * ratio, 0.f, height);
-        Object obj;
+        DetectObject obj;
         obj.rect.x      = x0;
         obj.rect.y      = y0;
         obj.rect.width  = x1 - x0;
@@ -252,32 +253,87 @@ void YOLOv8::postprocess(std::vector<Object>& objs)
     }
 }
 
-void YOLOv8::draw_objects(const cv::Mat&                                image,
-                          cv::Mat&                                      res,
-                          const std::vector<Object>&                    objs,
-                          const std::vector<std::string>&               CLASS_NAMES,
-                          const std::vector<std::vector<unsigned int>>& COLORS)
+void YOLOv8::posePostprocess(std::vector<PoseObject>& objs, float score_thres, float iou_thres, int topk)
 {
-    res = image.clone();
-    for (auto& obj : objs) {
-        cv::Scalar color = cv::Scalar(COLORS[obj.label][0], COLORS[obj.label][1], COLORS[obj.label][2]);
-        cv::rectangle(res, obj.rect, color, 2);
+    objs.clear();
+    auto num_channels = this->output_bindings[0].dims.d[1];
+    auto num_anchors  = this->output_bindings[0].dims.d[2];
 
-        char text[256];
-        sprintf(text, "%s %.1f%%", CLASS_NAMES[obj.label].c_str(), obj.prob * 100);
+    auto& dw     = this->pparam.dw;
+    auto& dh     = this->pparam.dh;
+    auto& width  = this->pparam.width;
+    auto& height = this->pparam.height;
+    auto& ratio  = this->pparam.ratio;
 
-        int      baseLine   = 0;
-        cv::Size label_size = cv::getTextSize(text, cv::FONT_HERSHEY_SIMPLEX, 0.4, 1, &baseLine);
+    std::vector<cv::Rect>           bboxes;
+    std::vector<float>              scores;
+    std::vector<int>                labels;
+    std::vector<int>                indices;
+    std::vector<std::vector<float>> kpss;
 
-        int x = (int)obj.rect.x;
-        int y = (int)obj.rect.y + 1;
+    cv::Mat output = cv::Mat(num_channels, num_anchors, CV_32F, static_cast<float*>(this->host_ptrs[0]));
+    output         = output.t();
+    for (int i = 0; i < num_anchors; i++) {
+        auto row_ptr    = output.row(i).ptr<float>();
+        auto bboxes_ptr = row_ptr;
+        auto scores_ptr = row_ptr + 4;
+        auto kps_ptr    = row_ptr + 5;
 
-        if (y > res.rows)
-            y = res.rows;
+        float score = *scores_ptr;
+        if (score > score_thres) {
+            float x = *bboxes_ptr++ - dw;
+            float y = *bboxes_ptr++ - dh;
+            float w = *bboxes_ptr++;
+            float h = *bboxes_ptr;
 
-        cv::rectangle(res, cv::Rect(x, y, label_size.width, label_size.height + baseLine), {0, 0, 255}, -1);
+            float x0 = clamp((x - 0.5f * w) * ratio, 0.f, width);
+            float y0 = clamp((y - 0.5f * h) * ratio, 0.f, height);
+            float x1 = clamp((x + 0.5f * w) * ratio, 0.f, width);
+            float y1 = clamp((y + 0.5f * h) * ratio, 0.f, height);
 
-        cv::putText(res, text, cv::Point(x, y + label_size.height), cv::FONT_HERSHEY_SIMPLEX, 0.4, {255, 255, 255}, 1);
+            cv::Rect_<float> bbox;
+            bbox.x      = x0;
+            bbox.y      = y0;
+            bbox.width  = x1 - x0;
+            bbox.height = y1 - y0;
+            std::vector<float> kps;
+            for (int k = 0; k < 17; k++) {
+                float kps_x = (*(kps_ptr + 3 * k) - dw) * ratio;
+                float kps_y = (*(kps_ptr + 3 * k + 1) - dh) * ratio;
+                float kps_s = *(kps_ptr + 3 * k + 2);
+                kps_x       = clamp(kps_x, 0.f, width);
+                kps_y       = clamp(kps_y, 0.f, height);
+                kps.push_back(kps_x);
+                kps.push_back(kps_y);
+                kps.push_back(kps_s);
+            }
+
+            bboxes.push_back(bbox);
+            labels.push_back(0);
+            scores.push_back(score);
+            kpss.push_back(kps);
+        }
+    }
+
+#ifdef BATCHED_NMS
+    cv::dnn::NMSBoxesBatched(bboxes, scores, labels, score_thres, iou_thres, indices);
+#else
+    cv::dnn::NMSBoxes(bboxes, scores, score_thres, iou_thres, indices);
+#endif
+
+    int cnt = 0;
+    for (auto& i : indices) {
+        if (cnt >= topk) {
+            break;
+        }
+        PoseObject obj;
+        obj.rect  = bboxes[i];
+        obj.prob  = scores[i];
+        obj.label = labels[i];
+        obj.kps   = kpss[i];
+        objs.push_back(obj);
+        cnt += 1;
     }
 }
+
 #endif  // JETSON_DETECT_YOLOV8_HPP
