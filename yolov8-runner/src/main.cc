@@ -85,6 +85,27 @@ static napi_value RunInference(napi_env env, napi_callback_info info) {
   // cv::Size size{640, 640};
   model->copy_from_Mat(mat);
   model->infer();
+  return objArray;
+}
+
+static napi_value DetectPostprocess(napi_env env, napi_callback_info info) {
+  napi_status status;
+
+  if (model == nullptr) {
+    napi_throw_error(env, NULL, "NO_MODEL");
+    return NULL;
+  }
+
+  size_t argc = 2;
+  napi_value args[2];
+  status = napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+  assert(status == napi_ok);
+
+  if (argc > 0) {
+    napi_throw_type_error(env, NULL, "Wrong number of arguments");
+    return NULL;
+  }
+
   std::vector<DetectObject> objs;
   model->detectPostprocess(objs);
   // std::cout << "Number of detected objects: " << objs.size() << std::endl;
@@ -141,8 +162,116 @@ static napi_value RunInference(napi_env env, napi_callback_info info) {
     status = napi_call_function(env, objArray, pushFunc, 1, {&object}, &result);
     assert(status == napi_ok);
   }
+}
 
-  return objArray;
+static napi_value PosePostprocess(napi_env env, napi_callback_info info) {
+  napi_status status;
+
+  if (model == nullptr) {
+    napi_throw_error(env, NULL, "NO_MODEL");
+    return NULL;
+  }
+
+  size_t argc = 2;
+  napi_value args[2];
+  status = napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+  assert(status == napi_ok);
+
+  if (argc > 0) {
+    napi_throw_type_error(env, NULL, "Wrong number of arguments");
+    return NULL;
+  }
+
+  std::vector<PoseObject> objs;
+  model->posePostprocess(objs);
+  // std::cout << "Number of detected objects: " << objs.size() << std::endl;
+
+  napi_value objArray;
+  status = napi_create_array(env, &objArray);
+  assert(status == napi_ok);
+  napi_value pushFunc;
+  status = napi_get_named_property(env, objArray, "push", &pushFunc);
+  assert(status == napi_ok);
+  (status == napi_ok);
+  for(PoseObject obj : objs) {
+    napi_value object;
+    status = napi_create_object(env, &object);
+    assert(status == napi_ok);
+    
+    napi_value label;
+    status = napi_create_int32(env, obj.label, &label);
+    assert(status == napi_ok);
+    status = napi_set_named_property(env, object, "label", label);
+    assert(status == napi_ok);
+    
+    napi_value prob;
+    status = napi_create_double(env, (double)obj.prob, &prob);
+    assert(status == napi_ok);
+    status = napi_set_named_property(env, object, "prob", prob);
+    assert(status == napi_ok);
+    
+    napi_value x;
+    status = napi_create_double(env, (double)obj.rect.x, &x);
+    assert(status == napi_ok);
+    status = napi_set_named_property(env, object, "x", x);
+    assert(status == napi_ok);
+    
+    napi_value y;
+    status = napi_create_double(env, (double)obj.rect.y, &y);
+    assert(status == napi_ok);
+    status = napi_set_named_property(env, object, "y", y);
+    assert(status == napi_ok);
+    
+    napi_value height;
+    status = napi_create_double(env, (double)obj.rect.height, &height);
+    assert(status == napi_ok);
+    status = napi_set_named_property(env, object, "height", height);
+    assert(status == napi_ok);
+    
+    napi_value width;
+    status = napi_create_double(env, (double)obj.rect.width, &width);
+    assert(status == napi_ok);
+    status = napi_set_named_property(env, object, "width", width);
+    assert(status == napi_ok);
+    
+    napi_value kps;
+    status = napi_create_array(env, &kps);
+    assert(status == napi_ok);
+    
+    for(int i = 0; i < obj.kps.size(); i += 3) {
+      napi_value kpObject;
+      status = napi_create_object(env, &kpObject);
+      assert(status == napi_ok);
+   
+      napi_value kpX;
+      status = napi_create_double(env, (double)obj.kps[i], &kpX);
+      assert(status == napi_ok);
+      status = napi_set_named_property(env, kpObject, "x", kpX);
+      assert(status == napi_ok);
+      
+      napi_value kpY;
+      status = napi_create_double(env, (double)obj.kps[i+1], &kpY);
+      assert(status == napi_ok);
+      status = napi_set_named_property(env, kpObject, "y", kpY);
+      assert(status == napi_ok);
+
+      napi_value kpX;
+      status = napi_create_double(env, (double)obj.kps[i+2], &kpS);
+      assert(status == napi_ok);
+      status = napi_set_named_property(env, kpObject, "s", kpS);
+      assert(status == napi_ok);
+
+      napi_value result;
+      status = napi_call_function(env, kps, pushFunc, 1, {&kpObject}, &result);
+      assert(status == napi_ok);
+    } 
+
+    status = napi_set_named_property(env, object, "kps", kps);
+  
+    napi_value result;
+    status = napi_call_function(env, objArray, pushFunc, 1, {&object}, &result);
+    assert(status == napi_ok);
+  }
 }
 
 #define DECLARE_NAPI_METHOD(name, func)                                        \
@@ -150,7 +279,11 @@ static napi_value RunInference(napi_env env, napi_callback_info info) {
 
 napi_value Init(napi_env env, napi_value exports) {
   napi_status status;
-  napi_property_descriptor descriptors[] = {DECLARE_NAPI_METHOD("warmupModel", WarmupModel), DECLARE_NAPI_METHOD("inference", RunInference)};
+  napi_property_descriptor descriptors[] = {
+    DECLARE_NAPI_METHOD("warmupModel", WarmupModel), 
+    DECLARE_NAPI_METHOD("inference", RunInference), 
+    DECLARE_NAPI_METHOD("detectPostprocess", DetectPostprocess)};
+    DECLARE_NAPI_METHOD("posePostprocess", PostPostprocess)};
   // napi_property_descriptor addDescriptor = ;
   status = napi_define_properties(env, exports, 2, descriptors);
   assert(status == napi_ok);
