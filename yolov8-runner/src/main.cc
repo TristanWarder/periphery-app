@@ -85,7 +85,7 @@ static napi_value RunInference(napi_env env, napi_callback_info info) {
   // cv::Size size{640, 640};
   model->copy_from_Mat(mat);
   model->infer();
-  return objArray;
+  return {};
 }
 
 static napi_value DetectPostprocess(napi_env env, napi_callback_info info) {
@@ -162,6 +162,7 @@ static napi_value DetectPostprocess(napi_env env, napi_callback_info info) {
     status = napi_call_function(env, objArray, pushFunc, 1, {&object}, &result);
     assert(status == napi_ok);
   }
+  return objArray;
 }
 
 static napi_value PosePostprocess(napi_env env, napi_callback_info info) {
@@ -255,7 +256,7 @@ static napi_value PosePostprocess(napi_env env, napi_callback_info info) {
       status = napi_set_named_property(env, kpObject, "y", kpY);
       assert(status == napi_ok);
 
-      napi_value kpX;
+      napi_value kpS;
       status = napi_create_double(env, (double)obj.kps[i+2], &kpS);
       assert(status == napi_ok);
       status = napi_set_named_property(env, kpObject, "s", kpS);
@@ -272,6 +273,7 @@ static napi_value PosePostprocess(napi_env env, napi_callback_info info) {
     status = napi_call_function(env, objArray, pushFunc, 1, {&object}, &result);
     assert(status == napi_ok);
   }
+  return objArray;
 }
 
 #define DECLARE_NAPI_METHOD(name, func)                                        \
@@ -282,10 +284,10 @@ napi_value Init(napi_env env, napi_value exports) {
   napi_property_descriptor descriptors[] = {
     DECLARE_NAPI_METHOD("warmupModel", WarmupModel), 
     DECLARE_NAPI_METHOD("inference", RunInference), 
-    DECLARE_NAPI_METHOD("detectPostprocess", DetectPostprocess)};
-    DECLARE_NAPI_METHOD("posePostprocess", PostPostprocess)};
+    DECLARE_NAPI_METHOD("detectPostprocess", DetectPostprocess),
+    DECLARE_NAPI_METHOD("posePostprocess", PosePostprocess)};
   // napi_property_descriptor addDescriptor = ;
-  status = napi_define_properties(env, exports, 2, descriptors);
+  status = napi_define_properties(env, exports, 4, descriptors);
   assert(status == napi_ok);
   return exports;
 }

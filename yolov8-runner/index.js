@@ -43,7 +43,12 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
     let frame = frames[frames.length - 1];
     let results = null;
     try {
-      results = yolov8.inference(frame);
+      let inferResult = yolov8.inference(frame);
+      //results = yolov8.detectPostprocess();
+      results = yolov8.posePostprocess();
+      //if(results[0].kps) {
+        //results[0].kps.forEach(point => console.log(point));
+      //}
     } catch(err) {
       // console.log(err); throw away error
     }
@@ -67,7 +72,8 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
 
 
 const yolov8 = require("bindings")("yolov8-runner");
-const ENGINE_PATH = path.resolve(__dirname, "./engines/note.engine");
+const ENGINE_PATH = path.resolve(__dirname, "./engines/skeleton.engine");
+//const ENGINE_PATH = path.resolve(__dirname, "./engines/note.engine");
 // Delay promise wrapper
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
