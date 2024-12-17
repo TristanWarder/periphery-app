@@ -29,24 +29,43 @@ commandMap.set(commands.discover, (sock, remote) => {
 	return sendResponse(sock, remote, header);
 });
 
-let imageArray = new Array();
+let imageArrays = new Array();
+
+function findImageArray(sourceIP) {
+  let found = imageArrays.find(array => {
+    if(array.ip === sourceIP) return true;
+  });
+  if(!found) {
+    let newBuf = {
+      ip: sourceIP,
+      chunks: new Array()
+    };
+    imageArrays.push(newBuf);
+    return newBuf;
+  }
+  return found;
+}
+
 commandMap.set(commands.inference, async (sock, remote, message) => {
   const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.inference, "hex")]);
 	const headerLength = getByteLength(commands.unique) + getByteLength(commands.inference);
   let payload = message.slice(headerLength + 1);
   // console.log(message[headerLength])
-  imageArray.push(payload);
+  let arrayObj = findImageArray(remote.address);
+  let array = arrayObj.chunks;
+  array.push(payload);
   let response = null;
   let sendingUnique = false;
   if(message[headerLength]) {
-    let frames = findFrames(imageArray);
+    let frames = findFrames(array);
     let frame = frames[frames.length - 1];
     let results = null;
     try {
       let inferResult = yolov8.inference(frame);
-      //results = yolov8.detectPostprocess();
-      results = yolov8.posePostprocess();
+      results = yolov8.detectPostprocess();
+      //results = yolov8.posePostprocess();
       //if(results[0].kps) {
+        //console.log(results[0].kps.length);
         //results[0].kps.forEach(point => console.log(point));
       //}
     } catch(err) {
@@ -60,7 +79,7 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
       response = Buffer.concat([header, length, Buffer.from(data)]);
     }
     // Clear past frames
-    imageArray = new Array();
+    arrayObj.chunks = new Array();
   }
   if(!sendingUnique) {
     let length = Buffer.alloc(2);
@@ -72,8 +91,8 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
 
 
 const yolov8 = require("bindings")("yolov8-runner");
-const ENGINE_PATH = path.resolve(__dirname, "./engines/skeleton.engine");
-//const ENGINE_PATH = path.resolve(__dirname, "./engines/note.engine");
+//const ENGINE_PATH = path.resolve(__dirname, "./engines/skeleton.engine");
+const ENGINE_PATH = path.resolve(__dirname, "./engines/note.engine");
 // Delay promise wrapper
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
