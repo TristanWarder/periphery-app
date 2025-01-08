@@ -4,7 +4,7 @@ const dgram = require("node:dgram");
 const path = require('node:path');
 
 const socket = dgram.createSocket('udp4');
-const PORT = 5555;
+const PORT = 5800;
 
 const commands = require(path.resolve(__dirname, "./commands.json"));
 const commandMap = new Map();
@@ -46,6 +46,37 @@ function findImageArray(sourceIP) {
   return found;
 }
 
+function detectionToBuffer(detection) {
+  let label = Buffer.alloc(1);
+  label.writeInt8(detection.label);
+  let x = Buffer.alloc(8);
+  x.writeDoubleLE(detection.x);
+  let y = Buffer.alloc(8);
+  y.writeDoubleLE(detection.y);
+  let width = Buffer.alloc(8);
+  width.writeDoubleLE(detection.width);
+  let height = Buffer.alloc(8);
+  height.writeDoubleLE(detection.height);
+  let kps;
+  if(detection.kps) {
+  kps = Buffer.alloc(24 * detection.kps.length);
+    for(let i = 0; i < detection.kps.length; i++) {
+      kps.writeDoubleLE(detection.kps[i].x, 0 + (i * 24));
+      kps.writeDoubleLE(detection.kps[i].y, 8 + (i * 24));
+      kps.writeDoubleLE(detection.kps[i].s, 16 + (i * 24));
+    }
+  }
+  else {
+    kps = Buffer.alloc(0);
+  }
+  let kpsLength = Buffer.alloc(2);
+  kpsLength.writeInt16BE(kps.length);
+  let data = Buffer.concat([label, x, y, width, height, kpsLength, kps]);
+  let detLength = Buffer.alloc(2);
+  detLength.writeInt16BE(data.length + 2);
+  return Buffer.concat([detLength, data]);
+}
+
 commandMap.set(commands.inference, async (sock, remote, message) => {
   const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.inference, "hex")]);
 	const headerLength = getByteLength(commands.unique) + getByteLength(commands.inference);
@@ -63,6 +94,7 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
     try {
       let inferResult = yolov8.inference(frame);
       results = yolov8.detectPostprocess();
+      //console.log(results);
       //results = yolov8.posePostprocess();
       //if(results[0].kps) {
         //console.log(results[0].kps.length);
@@ -73,10 +105,17 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
     }
     if(results && results.length) {
       sendingUnique = true;
-      let data = Buffer.from(JSON.stringify(results));
+      let detectionBufs = new Array();
+      for(detection of results) {
+        detectionBufs.push(detectionToBuffer(detection));
+        //console.log(detectionBufs[detectionBufs.length - 1]);
+      }
+      let data = Buffer.concat(detectionBufs);
       let length = Buffer.alloc(2);
       length.writeInt16BE(data.length);
-      response = Buffer.concat([header, length, Buffer.from(data)]);
+      let detectionsLength = Buffer.alloc(2);
+      detectionsLength.writeInt16BE(results.length);
+      response = Buffer.concat([header, length, detectionsLength, data]);
     }
     // Clear past frames
     arrayObj.chunks = new Array();
@@ -93,6 +132,7 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
 const yolov8 = require("bindings")("yolov8-runner");
 //const ENGINE_PATH = path.resolve(__dirname, "./engines/skeleton.engine");
 const ENGINE_PATH = path.resolve(__dirname, "./engines/note.engine");
+//const ENGINE_PATH = path.resolve(__dirname, "./engines/algae.engine");
 // Delay promise wrapper
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
