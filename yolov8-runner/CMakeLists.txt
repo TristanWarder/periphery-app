@@ -29,7 +29,6 @@ message(STATUS "OpenCV Headers: \n${OpenCV_INCLUDE_DIRS}\n")
 set(TensorRT_INCLUDE_DIRS /usr/include/aarch64-linux-gnu)
 set(TensorRT_LIBRARIES /usr/lib/aarch64-linux-gnu)
 
-
 message(STATUS "TensorRT Libs: \n${TensorRT_LIBRARIES}\n")
 message(STATUS "TensorRT Headers: \n${TensorRT_INCLUDE_DIRS}\n")
 
@@ -46,4 +45,4 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_JS_INC} ${CUDA_INCLUD
 
 # Essential library files to link to a node addon
 # You should add this line in every CMake.js based project
-target_link_libraries(${PROJECT_NAME} ${CMAKE_JS_LIB} nvinfer nvinfer_plugin ${CUDA_LIBRARIES} ${OpenCV_LIBS})
+target_link_libraries(${PROJECT_NAME} ${CMAKE_JS_LIB} nvinfer nvinfer_plugin nvonnxparser ${CUDA_LIBRARIES} ${OpenCV_LIBS})

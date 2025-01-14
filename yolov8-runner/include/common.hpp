@@ -71,16 +71,34 @@ inline int type_to_size(const nvinfer1::DataType& dataType)
     switch (dataType) {
         case nvinfer1::DataType::kFLOAT:
             return 4;
+            break;
         case nvinfer1::DataType::kHALF:
             return 2;
+            break;
+        case nvinfer1::DataType::kFP8:
+            return 1;
+            break;
+        case nvinfer1::DataType::kBF16:
+            return 2;
+            break;
         case nvinfer1::DataType::kINT32:
             return 4;
+            break;
+        case nvinfer1::DataType::kINT64:
+            return 8;
+            break;
         case nvinfer1::DataType::kINT8:
             return 1;
+            break;
+        case nvinfer1::DataType::kUINT8:
+            return 1;
+            break;
         case nvinfer1::DataType::kBOOL:
             return 1;
+            break;
         default:
             return 4;
+            break;
     }
 }
 

@@ -16,7 +16,7 @@ public:
     ~YOLOv8();
 
     void                 make_pipe(bool warmup = true);
-    void                 generateEngine();
+    static bool                 generateEngine(std::string onnxPath);
     void                 copy_from_Mat(const cv::Mat& image);
     void                 copy_from_Mat(const cv::Mat& image, cv::Size& size);
     void                 letterbox(const cv::Mat& image, cv::Mat& out, cv::Size& size);
@@ -70,7 +70,7 @@ YOLOv8::YOLOv8(const std::string& engine_file_path)
     cudaStreamCreate(&this->stream);
     this->num_bindings = this->engine->getNbIOTensors();
 
-    for (int i = 0; i < this->num_bindings; ++i) {
+    for (int i = 0; i < this->num_bindings; i++) {
         Binding            binding;
         nvinfer1::Dims     dims;
         const char*        name  = this->engine->getIOTensorName(i);
@@ -147,10 +147,37 @@ void YOLOv8::make_pipe(bool warmup)
     }
 }
 
-void YOLOv8::generateEngine() {
-  nvinfer1::IBuilder* builder = nvinfer1::createInferBuilder(this->gLogger);
+bool YOLOv8::generateEngine(std::string onnxPath) {
+
+  Logger logger{nvinfer1::ILogger::Severity::kERROR};
+  nvinfer1::IBuilder* builder = nvinfer1::createInferBuilder(logger);
   nvinfer1::INetworkDefinition* network = builder->createNetworkV2(1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED));
-  IParser* parser = createParser(*network, this->gLogger);
+  nvonnxparser::IParser* parser = createParser(*network, logger);
+  bool result = parser->parseFromFile(onnxPath.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kINFO));
+  std::cout << "Beginning engine generation of model: " << onnxPath << "..." << std::endl;
+  nvinfer1::IBuilderConfig* config = builder->createBuilderConfig();
+  nvinfer1::IHostMemory* serializedModel = builder->buildSerializedNetwork(*network, *config);
+  std::string enginePath = onnxPath.substr(0, onnxPath.size() - 4) + "engine";  
+  std::ofstream file;
+  // Open the engine file in binary write mode
+  file.open(enginePath, std::ios::binary | std::ios::out);
+  if (!file.is_open())
+  {
+      std::cout << "Create engine file " << enginePath << " failed" << std::endl;
+      return false;
+  }
+  // Write the serialized engine data to the file
+  file.write((const char*)serializedModel->data(), serializedModel->size());
+  file.close();
+
+  std::cout << "Engine successfully saved as: " << enginePath << std::endl;
+
+  delete network;
+  delete config;
+  delete builder;
+  delete parser;
+
+  return true;
 }
 
 void YOLOv8::letterbox(const cv::Mat& image, cv::Mat& out, cv::Size& size)
@@ -190,7 +217,6 @@ void YOLOv8::letterbox(const cv::Mat& image, cv::Mat& out, cv::Size& size)
     this->pparam.dh     = dh;
     this->pparam.height = height;
     this->pparam.width  = width;
-    ;
 }
 
 void YOLOv8::copy_from_Mat(const cv::Mat& image)
@@ -220,8 +246,6 @@ void YOLOv8::copy_from_Mat(const cv::Mat& image, cv::Size& size)
 
 void YOLOv8::infer()
 {
-
-    /*this->context->enqueueV2(this->device_ptrs.data(), this->stream, nullptr);*/
     this->context->enqueueV3(this->stream);
     for (int i = 0; i < this->num_outputs; i++) {
         size_t osize = this->output_bindings[i].size * this->output_bindings[i].dsize;
@@ -243,9 +267,9 @@ void YOLOv8::detectPostprocess(std::vector<DetectObject>& objs)
     auto& width    = this->pparam.width;
     auto& height   = this->pparam.height;
     auto& ratio    = this->pparam.ratio;
+    /*std::cout << "Detections: " << num_dets[0] << std::endl;*/
     for (int i = 0; i < num_dets[0]; i++) {
         float* ptr = boxes + i * 4;
-
         float x0 = *ptr++ - dw;
         float y0 = *ptr++ - dh;
         float x1 = *ptr++ - dw;

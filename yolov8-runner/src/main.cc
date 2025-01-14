@@ -48,6 +48,42 @@ static napi_value WarmupModel(napi_env env, napi_callback_info info) {
   return napi_value{};
 }
 
+static napi_value ExportEngine(napi_env env, napi_callback_info info) {
+  napi_status status;
+
+  size_t argc = 2;
+  napi_value args[2];
+  status = napi_get_cb_info(env, info, &argc, args, NULL, NULL);
+  assert(status == napi_ok);
+
+  if (argc < 1) {
+    napi_throw_type_error(env, NULL, "Wrong number of arguments");
+    return NULL;
+  }
+
+  napi_valuetype valuetype;
+  status = napi_typeof(env, args[0], &valuetype);
+  assert(status == napi_ok);
+
+  if (valuetype != napi_string) {
+    napi_throw_type_error(env, NULL, "Wrong arguments");
+    return NULL;
+  }
+
+  char onnxPath[100];
+  size_t pathLength = 0;
+  status = napi_get_value_string_utf8(env, args[0], onnxPath, 100, &pathLength);
+  assert(status == napi_ok);
+
+  auto path = std::string(onnxPath);
+
+  YOLOv8::generateEngine(path);
+  
+  assert(status == napi_ok);
+
+  return napi_value{};
+}
+
 static napi_value RunInference(napi_env env, napi_callback_info info) {
   napi_status status;
 
@@ -283,11 +319,12 @@ napi_value Init(napi_env env, napi_value exports) {
   napi_status status;
   napi_property_descriptor descriptors[] = {
     DECLARE_NAPI_METHOD("warmupModel", WarmupModel), 
+    DECLARE_NAPI_METHOD("exportEngine", ExportEngine), 
     DECLARE_NAPI_METHOD("inference", RunInference), 
     DECLARE_NAPI_METHOD("detectPostprocess", DetectPostprocess),
     DECLARE_NAPI_METHOD("posePostprocess", PosePostprocess)};
   // napi_property_descriptor addDescriptor = ;
-  status = napi_define_properties(env, exports, 4, descriptors);
+  status = napi_define_properties(env, exports, 5, descriptors);
   assert(status == napi_ok);
   return exports;
 }
