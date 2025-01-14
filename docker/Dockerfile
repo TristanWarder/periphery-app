@@ -1,6 +1,5 @@
 # Use Nvidia L4T Jetpack image as a base
-FROM nvcr.io/nvidia/l4t-jetpack:r36.3.0
-# Set the SHELL to bash with pipefail option
+FROM ultralytics/ultralytics:latest-jetson-jetpack6
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Update packages
@@ -21,7 +20,10 @@ WORKDIR /home/periphery
 # Run pip as user
 USER periphery
 # Install yolov8 python dependencies
-RUN pip install numpy onnx onnxsim opencv-python torch torchvision ultralytics
+RUN pip install onnxsim --use-pep517
+RUN pip install numpy onnx opencv-python torch torchvision ultralytics
+
+RUN echo "export PATH=$PATH:/home/periphery/.local/bin" >> ~/.bashrc
 
 # Install packages as root
 USER root
