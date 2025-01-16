@@ -21,7 +21,9 @@ public:
     void                 copy_from_Mat(const cv::Mat& image, cv::Size& size);
     void                 letterbox(const cv::Mat& image, cv::Mat& out, cv::Size& size);
     void                 infer();
-    void                 detectPostprocess(std::vector<DetectObject>& objs);
+    /*void                 detectPostprocess(std::vector<DetectObject>& objs);*/
+
+    void                 detectPostprocess(std::vector<DetectObject>& objs, float score_thres = 0.25f, float iou_thres = 0.65f, int topk = 100);
     void                 posePostprocess(std::vector<PoseObject>& objs, float score_thres = 0.25f, float iou_thres = 0.65f, int topk = 100);
     // static void          draw_objects(const cv::Mat&                                image,
     //                                   cv::Mat&                                      res,
@@ -255,38 +257,111 @@ void YOLOv8::infer()
     cudaStreamSynchronize(this->stream);
 }
 
-void YOLOv8::detectPostprocess(std::vector<DetectObject>& objs)
+/*void YOLOv8::detectPostprocess(std::vector<DetectObject>& objs)*/
+/*{*/
+/*    objs.clear();*/
+/*    int*  num_dets = static_cast<int*>(this->host_ptrs[0]);*/
+/*    auto* boxes    = static_cast<float*>(this->host_ptrs[1]);*/
+/*    auto* scores   = static_cast<float*>(this->host_ptrs[2]);*/
+/*    int*  labels   = static_cast<int*>(this->host_ptrs[3]);*/
+/*    auto& dw       = this->pparam.dw;*/
+/*    auto& dh       = this->pparam.dh;*/
+/*    auto& width    = this->pparam.width;*/
+/*    auto& height   = this->pparam.height;*/
+/*    auto& ratio    = this->pparam.ratio;*/
+/*    std::cout << "Detections: " << num_dets[0] << std::endl;*/
+/*    for (int i = 0; i < num_dets[0]; i++) {*/
+/*        float* ptr = boxes + i * 4;*/
+/*        float x0 = *ptr++ - dw;*/
+/*        float y0 = *ptr++ - dh;*/
+/*        float x1 = *ptr++ - dw;*/
+/*        float y1 = *ptr - dh;*/
+/**/
+/*        x0 = clamp(x0 * ratio, 0.f, width);*/
+/*        y0 = clamp(y0 * ratio, 0.f, height);*/
+/*        x1 = clamp(x1 * ratio, 0.f, width);*/
+/*        y1 = clamp(y1 * ratio, 0.f, height);*/
+/*        DetectObject obj;*/
+/*        obj.rect.x      = x0;*/
+/*        obj.rect.y      = y0;*/
+/*        obj.rect.width  = x1 - x0;*/
+/*        obj.rect.height = y1 - y0;*/
+/*        obj.prob        = *(scores + i);*/
+/*        obj.label       = *(labels + i);*/
+/*        objs.push_back(obj);*/
+/*    }*/
+/*}*/
+
+void YOLOv8::detectPostprocess(std::vector<DetectObject>& objs, float score_thres, float iou_thres, int topk)
 {
     objs.clear();
-    int*  num_dets = static_cast<int*>(this->host_ptrs[0]);
-    auto* boxes    = static_cast<float*>(this->host_ptrs[1]);
-    auto* scores   = static_cast<float*>(this->host_ptrs[2]);
-    int*  labels   = static_cast<int*>(this->host_ptrs[3]);
-    auto& dw       = this->pparam.dw;
-    auto& dh       = this->pparam.dh;
-    auto& width    = this->pparam.width;
-    auto& height   = this->pparam.height;
-    auto& ratio    = this->pparam.ratio;
-    /*std::cout << "Detections: " << num_dets[0] << std::endl;*/
-    for (int i = 0; i < num_dets[0]; i++) {
-        float* ptr = boxes + i * 4;
-        float x0 = *ptr++ - dw;
-        float y0 = *ptr++ - dh;
-        float x1 = *ptr++ - dw;
-        float y1 = *ptr - dh;
+    auto num_channels = this->output_bindings[0].dims.d[1];
+    auto num_anchors  = this->output_bindings[0].dims.d[2];
 
-        x0 = clamp(x0 * ratio, 0.f, width);
-        y0 = clamp(y0 * ratio, 0.f, height);
-        x1 = clamp(x1 * ratio, 0.f, width);
-        y1 = clamp(y1 * ratio, 0.f, height);
+    auto& dw     = this->pparam.dw;
+    auto& dh     = this->pparam.dh;
+    auto& width  = this->pparam.width;
+    auto& height = this->pparam.height;
+    auto& ratio  = this->pparam.ratio;
+
+    std::vector<cv::Rect>           bboxes;
+    std::vector<float>              scores;
+    std::vector<int>                labels;
+    std::vector<int>                indices;
+
+    cv::Mat output = cv::Mat(num_channels, num_anchors, CV_32F, static_cast<float*>(this->host_ptrs[0]));
+    output         = output.t();
+    for (int i = 0; i < num_anchors; i++) {
+        auto row = output.row(i);
+        auto row_ptr    = row.ptr<float>();
+        auto bboxes_ptr = row_ptr;
+        auto scores_ptr = row_ptr + 4;
+        cv::Mat score_mat(1, row.cols - 4, CV_32FC1, scores_ptr);
+        cv::Point class_id;
+        double maxClassScore;
+
+        cv::minMaxLoc(score_mat, NULL, &maxClassScore, NULL, &class_id);
+
+        if (maxClassScore > score_thres) {
+            float x = *bboxes_ptr++ - dw;
+            float y = *bboxes_ptr++ - dh;
+            float w = *bboxes_ptr++;
+            float h = *bboxes_ptr;
+
+            float x0 = clamp((x - 0.5f * w) * ratio, 0.f, width);
+            float y0 = clamp((y - 0.5f * h) * ratio, 0.f, height);
+            float x1 = clamp((x + 0.5f * w) * ratio, 0.f, width);
+            float y1 = clamp((y + 0.5f * h) * ratio, 0.f, height);
+
+            cv::Rect_<float> bbox;
+            bbox.x      = x0;
+            bbox.y      = y0;
+            bbox.width  = x1 - x0;
+            bbox.height = y1 - y0;
+
+            bboxes.push_back(bbox);
+            labels.push_back(class_id.x);
+            scores.push_back(maxClassScore);
+        }
+    }
+
+#ifdef BATCHED_NMS
+    cv::dnn::NMSBoxesBatched(bboxes, scores, labels, score_thres, iou_thres, indices);
+#else
+    cv::dnn::NMSBoxes(bboxes, scores, score_thres, iou_thres, indices);
+#endif
+
+    int cnt = 0;
+    for (auto& i : indices) {
+        if (cnt >= topk) {
+            break;
+        }
         DetectObject obj;
-        obj.rect.x      = x0;
-        obj.rect.y      = y0;
-        obj.rect.width  = x1 - x0;
-        obj.rect.height = y1 - y0;
-        obj.prob        = *(scores + i);
-        obj.label       = *(labels + i);
+        obj.rect  = bboxes[i];
+        obj.prob  = scores[i];
+        obj.label = labels[i];
         objs.push_back(obj);
+        cnt += 1;
     }
 }
 

@@ -131,9 +131,9 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
 
 const yolov8 = require("bindings")("yolov8-runner");
 //const ENGINE_PATH = path.resolve(__dirname, "./engines/skeleton.engine");
-const ENGINE_PATH = path.resolve(__dirname, "./engines/note.engine");
+//const ENGINE_PATH = path.resolve(__dirname, "./engines/note.engine");
 //const ENGINE_PATH = path.resolve(__dirname, "./engines/algae.engine");
-//const ENGINE_PATH = path.resolve(__dirname, "./engines/reefscape.engine");
+const ENGINE_PATH = path.resolve(__dirname, "./engines/reefscape.engine");
 // Delay promise wrapper
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
