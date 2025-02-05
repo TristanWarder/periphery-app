@@ -25,8 +25,8 @@ USER periphery
 RUN pip install onnxsim --use-pep517
 RUN pip install numpy onnx opencv-python torch torchvision ultralytics
 
-RUN echo "export PATH=$PATH:/home/periphery/.local/bin" >> ~/.bashrc
-RUN echo "export PATH=$PATH:/usr/local/cuda/bin" >> ~/.bashrc
+ENV PATH="$PATH:/home/periphery/.local/bin:/usr/local/cuda/bin"
+RUN echo "PATH=${PATH}" >> ~/.bashrc
 
 # Install packages as root
 USER root
@@ -43,7 +43,7 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | b
 RUN . "$NVM_DIR/nvm.sh" && nvm install ${NODE_VERSION}
 RUN . "$NVM_DIR/nvm.sh" && nvm use v${NODE_VERSION}
 RUN . "$NVM_DIR/nvm.sh" && nvm alias default v${NODE_VERSION}
-ENV PATH="/$NVM_DIR/versions/node/v${NODE_VERSION}/bin/:${PATH}"
+ENV PATH="$NVM_DIR/versions/node/v${NODE_VERSION}/bin/:${PATH}"
 RUN echo "PATH=${PATH}" >> ~/.bashrc
 RUN node --version
 RUN npm --version

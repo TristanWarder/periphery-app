@@ -1,5 +1,5 @@
 # Use Nvidia L4T Jetpack image as a base
-FROM nvcr.io/nvidia/tensorrt:25.01-py3
+FROM ultralytics/ultralytics:latest-jetson-jetpack6
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Update packages
@@ -16,8 +16,6 @@ RUN adduser periphery sudo
 RUN echo "periphery:periphery" | chpasswd
 
 WORKDIR /home/periphery
-
-RUN DEBIAN_FRONTEND="noninteractive" apt install libopencv-dev -y
 
 # Run pip as user
 USER periphery
@@ -44,9 +42,7 @@ RUN . "$NVM_DIR/nvm.sh" && nvm install ${NODE_VERSION}
 RUN . "$NVM_DIR/nvm.sh" && nvm use v${NODE_VERSION}
 RUN . "$NVM_DIR/nvm.sh" && nvm alias default v${NODE_VERSION}
 ENV PATH="$NVM_DIR/versions/node/v${NODE_VERSION}/bin/:${PATH}"
-RUN echo "PATH=${PATH}" >> ~/.bashrc
 RUN node --version
 RUN npm --version
-RUN npm install cmake-js -g
 
 RUN mkdir /home/periphery/shared-dir
