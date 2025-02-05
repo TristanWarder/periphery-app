@@ -26,8 +26,8 @@ message(STATUS "OpenCV Libraries: \n${OpenCV_LIBRARIES}\n")
 message(STATUS "OpenCV Headers: \n${OpenCV_INCLUDE_DIRS}\n")
 
 # TensorRT
-set(TensorRT_INCLUDE_DIRS /usr/include/aarch64-linux-gnu)
-set(TensorRT_LIBRARIES /usr/lib/aarch64-linux-gnu)
+set(TensorRT_INCLUDE_DIRS /usr/include/x86_64-linux-gnu)
+set(TensorRT_LIBRARIES /usr/lib/x86_64-linux-gnu)
 
 message(STATUS "TensorRT Libs: \n${TensorRT_LIBRARIES}\n")
 message(STATUS "TensorRT Headers: \n${TensorRT_INCLUDE_DIRS}\n")
