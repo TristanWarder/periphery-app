@@ -49,4 +49,7 @@ RUN node --version
 RUN npm --version
 RUN npm install cmake-js -g
 
-ADD ./yolov8-runner ~/
+ADD https://github.com/TristanWarder/periphery-app.git ~/
+
+WORKDIR /home/periphery/periphery-app
+RUN npm install
