@@ -48,5 +48,3 @@ RUN echo "PATH=${PATH}" >> ~/.bashrc
 RUN node --version
 RUN npm --version
 RUN npm install cmake-js -g
-
-RUN mkdir /home/periphery/shared-dir
