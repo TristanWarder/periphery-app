@@ -1,12 +1,17 @@
 const fs = require("fs").promises;
 const fsConstants = require("fs").constants;
 const dgram = require("node:dgram");
-const path = require('node:path');
+const path = require("node:path");
 
-const socket = dgram.createSocket('udp4');
+const socket = dgram.createSocket("udp4");
 const PORT = 5800;
 
-const commands = require(path.resolve(__dirname, "./commands.json"));
+const REGISTRY_PATH = "./commands.json";
+const MODEL_CONFIG_PATH = "./models.json";
+const MODEL_LOCATION = "./engines/";
+
+const models = require(path.resolve(__dirname, MODEL_CONFIG_PATH));
+const commands = require(path.resolve(__dirname, REGISTRY_PATH));
 const commandMap = new Map();
 
 function getByteLength(string) {
@@ -133,7 +138,8 @@ const yolov8 = require("bindings")("yolov8-runner");
 //const ENGINE_PATH = path.resolve(__dirname, "./engines/skeleton.engine");
 //const ENGINE_PATH = path.resolve(__dirname, "./engines/note.engine");
 //const ENGINE_PATH = path.resolve(__dirname, "./engines/algae.engine");
-const ENGINE_PATH = path.resolve(__dirname, "./engines/reefscape.engine");
+//const ENGINE_PATH = path.resolve(__dirname, "./engines/reefscape_v3.engine");
+const ENGINE_PATH = path.resolve(__dirname, "./engines/reefscape_v4.engine");
 // Delay promise wrapper
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

@@ -1,5 +1,10 @@
 {
     "unique": "5b20c410",
     "discover": "8e96",
+    "getModels": "8711",
+    "selectModel": "847a",
+    "startSession": "5a55",
+    "querySession": "7603",
+    "endSession": "916e",
     "inference": "e24d"
 }
