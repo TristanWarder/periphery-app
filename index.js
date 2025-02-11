@@ -2,9 +2,13 @@ const fs = require("fs").promises;
 const fsConstants = require("fs").constants;
 const dgram = require("node:dgram");
 const path = require("node:path");
+const {
+  randomBytes,
+} = require('node:crypto');
 
-const socket = dgram.createSocket("udp4");
-const PORT = 5800;
+let serverSocket = null;
+let sessions = new Array();
+const SERVER_PORT = 5800;
 
 const REGISTRY_PATH = "./commands.json";
 const MODEL_CONFIG_PATH = "./models.json";
@@ -14,6 +18,29 @@ let models = getModelList();
 let currentModel = null;
 const commands = require(path.resolve(__dirname, REGISTRY_PATH));
 const commandMap = new Map();
+
+const VALID_SERVER_COMMANDS = [
+  commands.discover, 
+  commands.getModels, 
+  commands.selectModel,
+  commands.startSession,
+  commands.querySession,
+  commands.endSession
+];
+
+const VALID_SESSION_COMMANDS = [
+  commands.inference,
+  commands.endSession
+];
+
+async function createSession(remote) {
+  return {
+    remote: remote,
+    sock: await initSocket({address: "0.0.0.0"}, VALID_SESSION_COMMANDS),
+    id: randomBytes(4),
+    imageBuf: new Array()
+  };
+}
 
 async function getModelList() {
   try {
@@ -26,6 +53,12 @@ async function getModelList() {
 
 function getByteLength(string) {
   return string.length / 2;
+}
+
+function addressToBuf(string, delimeter) {
+    string = string.split(delimeter);
+    string.forEach((char, index) => string[index] = parseInt(char));
+    return string;
 }
 
 function sendResponse(sock, remote, payload) {
@@ -59,18 +92,40 @@ commandMap.set(commands.getModels, async (sock, remote) => {
 commandMap.set(commands.selectModel, async (sock, remote, message) => {
   const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.selectModel, "hex")]);
 	const headerLength = getByteLength(commands.unique) + getByteLength(commands.selectModel);
-  let payload = message.slice(headerLength + 1);
+  let payload = message.slice(headerLength);
   let modelString = payload.toString();
 
   let data = Buffer.alloc(1);
+  console.log(modelString);
   selection = models.find(model => model.name === modelString);
   if(selection) {
+    console.log(`Changing model to: ${selection.name}`);
     currentModel = selection;
     data[0] = 1;
   } else {
+    console.log("Invalid model selection");
     data[0] = 0;
   }
   let response = Buffer.concat([header, data]);
+	return sendResponse(sock, remote, response);
+});
+
+commandMap.set(commands.startSession, async (sock, remote) => {
+  const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.startSession, "hex")]);
+
+  let session = await createSession(remote);
+  sessions.push(session);
+  let sessionAddress = session.sock.address();
+  let address = addressToBuf(sessionAddress.address, '.');
+  let data = Buffer.alloc(10);
+  data[0] = address[0];
+  data[1] = address[1];
+  data[2] = address[2];
+  data[3] = address[3];
+  data.writeUint16BE(sessionAddress.port, 4);
+  session.id.copy(data, 6);
+  let response = Buffer.concat([header, data]);
+ 
 	return sendResponse(sock, remote, response);
 });
 
@@ -89,6 +144,12 @@ function findImageArray(sourceIP) {
     return newBuf;
   }
   return found;
+}
+
+function findSession(id) {
+  let found = sessions.find(session => session.id.equals(id));
+  if(!found) return null;
+  else return found;
 }
 
 function detectionToBuffer(detection) {
@@ -123,16 +184,29 @@ function detectionToBuffer(detection) {
 }
 
 commandMap.set(commands.inference, async (sock, remote, message) => {
-  const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.inference, "hex")]);
-	const headerLength = getByteLength(commands.unique) + getByteLength(commands.inference);
-  let payload = message.slice(headerLength + 1);
-  // console.log(message[headerLength])
-  let arrayObj = findImageArray(remote.address);
-  let array = arrayObj.chunks;
-  array.push(payload);
+  const header = Buffer.concat(
+    [
+      Buffer.from(commands.unique, "hex"), 
+      Buffer.from(commands.inference, "hex"),
+      Buffer.alloc(4)
+    ]);
+
+	const headerLength = getByteLength(commands.unique) + getByteLength(commands.inference) + 4;
+  let sessionId = message.slice(headerLength - 4, headerLength);
+  sessionId.copy(header, headerLength - 4);
+  let session = findSession(sessionId);
+  
+  let payload;
+  let array;
+  if(session) {
+    payload = message.slice(headerLength + 1);
+    // console.log(message[headerLength])
+    array = session.imageBuf;
+    array.push(payload);
+  }
   let response = null;
   let sendingUnique = false;
-  if(message[headerLength] && currentModel) {
+  if(session && message[headerLength] && currentModel) {
     let frames = findFrames(array);
     let frame = frames[frames.length - 1];
     let results = null;
@@ -143,6 +217,7 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
       } else if(currentModel.type === "yolo-pose-engine") {
         results = yolov8.posePostprocess();
       }
+
       //console.log(results);
       //results = yolov8.posePostprocess();
       //if(results[0].kps) {
@@ -167,7 +242,7 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
       response = Buffer.concat([header, length, detectionsLength, data]);
     }
     // Clear past frames
-    arrayObj.chunks = new Array();
+    session.imageBuf = new Array();
   }
   if(!sendingUnique) {
     let length = Buffer.alloc(2);
@@ -179,11 +254,7 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
 
 
 const yolov8 = require("bindings")("yolov8-runner");
-//const ENGINE_PATH = path.resolve(__dirname, "./engines/skeleton.engine");
-//const ENGINE_PATH = path.resolve(__dirname, "./engines/note.engine");
-//const ENGINE_PATH = path.resolve(__dirname, "./engines/algae.engine");
-//const ENGINE_PATH = path.resolve(__dirname, "./engines/reefscape_v3.engine");
-const ENGINE_PATH = path.resolve(__dirname, "./engines/reefscape_v4.engine");
+
 // Delay promise wrapper
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -240,7 +311,8 @@ function findFrames(bufArray) {
   return images;
 }
 
-async function initSocket() {
+async function initSocket(bindingData, commandList) {
+  const socket = dgram.createSocket("udp4");
   // Attach message handler to socket
   socket.on("message", async function (message, remote) {
     // console.log(`Server received message from:"${remote.address}:${remote.port}`, message);
@@ -248,6 +320,7 @@ async function initSocket() {
     if(message.slice(0, uniqueLength).toString("hex") !== commands.unique) return;
     try {
       let id = message.slice(uniqueLength, uniqueLength + 2).toString("hex");
+      if(!commandList.includes(id)) return;
       let command = commandMap.get(id);
       if(command) await command(socket, remote, message);
     } catch(err) {
@@ -267,12 +340,12 @@ async function initSocket() {
     });
   });
 
-  socket.bind({address: "0.0.0.0", port: PORT});
-  return sockConfigured;
+  socket.bind(bindingData);
+  return socket;
 }
 
 async function main() {
-  await initSocket();
+  serverSocket = await initSocket({address: "0.0.0.0", port: SERVER_PORT}, VALID_SERVER_COMMANDS);
   models = await getModelList();
   currentModel = models.find(model => model.name === "reefscape_v4");
   yolov8.warmupModel(path.resolve(__dirname, MODEL_LOCATION, currentModel.path));
