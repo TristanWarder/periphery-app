@@ -10,9 +10,19 @@ const REGISTRY_PATH = "./commands.json";
 const MODEL_CONFIG_PATH = "./models.json";
 const MODEL_LOCATION = "./engines/";
 
-const models = require(path.resolve(__dirname, MODEL_CONFIG_PATH));
+let models = getModelList();
+let currentModel = null;
 const commands = require(path.resolve(__dirname, REGISTRY_PATH));
 const commandMap = new Map();
+
+async function getModelList() {
+  try {
+    jsonString = await fs.readFile(path.resolve(__dirname, MODEL_CONFIG_PATH));
+    return JSON.parse(jsonString);
+  } catch(err) {
+    console.log(`Error reading JSON: ${err}`);
+  }
+}
 
 function getByteLength(string) {
   return string.length / 2;
@@ -32,6 +42,36 @@ function sendResponse(sock, remote, payload) {
 commandMap.set(commands.discover, (sock, remote) => {
   const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.discover, "hex")]);
 	return sendResponse(sock, remote, header);
+});
+
+commandMap.set(commands.getModels, async (sock, remote) => {
+  const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.getModels, "hex")]);
+
+  models = await getModelList();
+  let data = Buffer.from(JSON.stringify(models));
+  let length = Buffer.alloc(2);
+  length.writeInt16BE(data.length);
+  let response = Buffer.concat([header, length, data]);
+ 
+	return sendResponse(sock, remote, response);
+});
+
+commandMap.set(commands.selectModel, async (sock, remote, message) => {
+  const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.selectModel, "hex")]);
+	const headerLength = getByteLength(commands.unique) + getByteLength(commands.selectModel);
+  let payload = message.slice(headerLength + 1);
+  let modelString = payload.toString();
+
+  let data = Buffer.alloc(1);
+  selection = models.find(model => model.name === modelString);
+  if(selection) {
+    currentModel = selection;
+    data[0] = 1;
+  } else {
+    data[0] = 0;
+  }
+  let response = Buffer.concat([header, data]);
+	return sendResponse(sock, remote, response);
 });
 
 let imageArrays = new Array();
@@ -92,13 +132,17 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
   array.push(payload);
   let response = null;
   let sendingUnique = false;
-  if(message[headerLength]) {
+  if(message[headerLength] && currentModel) {
     let frames = findFrames(array);
     let frame = frames[frames.length - 1];
     let results = null;
     try {
       let inferResult = yolov8.inference(frame);
-      results = yolov8.detectPostprocess();
+      if(currentModel.type === "yolo-detect-engine") {
+        results = yolov8.detectPostprocess();
+      } else if(currentModel.type === "yolo-pose-engine") {
+        results = yolov8.posePostprocess();
+      }
       //console.log(results);
       //results = yolov8.posePostprocess();
       //if(results[0].kps) {
@@ -229,8 +273,9 @@ async function initSocket() {
 
 async function main() {
   await initSocket();
-  console.log(`About to warmup model at ${ENGINE_PATH}`);
-  yolov8.warmupModel(ENGINE_PATH);
+  models = await getModelList();
+  currentModel = models.find(model => model.name === "reefscape_v4");
+  yolov8.warmupModel(path.resolve(__dirname, MODEL_LOCATION, currentModel.path));
 
   // MJPG Stream Test
   // let result = await reader.read();
