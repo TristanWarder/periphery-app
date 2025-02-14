@@ -14,6 +14,8 @@ const REGISTRY_PATH = "./commands.json";
 const MODEL_CONFIG_PATH = "./models.json";
 const MODEL_LOCATION = "./engines/";
 
+const SESSION_TIMEOUT = 20000;
+
 let models = getModelList();
 let currentModel = null;
 const commands = require(path.resolve(__dirname, REGISTRY_PATH));
@@ -33,13 +35,37 @@ const VALID_SESSION_COMMANDS = [
   commands.endSession
 ];
 
+function createSessionTimeout(session) {
+  let func = async () => {
+    if(Date.now() - session.lastPulse > SESSION_TIMEOUT) {
+      console.log(`Session ${session.id} being obliterated`);
+      await removeSession(session.id);
+    }
+    else {
+      await delay(1000);
+      session.timeout(session);
+    }
+  }
+  return func; 
+}
+
 async function createSession(remote) {
-  return {
+  let session = {
     remote: remote,
     sock: await initSocket({address: "0.0.0.0"}, VALID_SESSION_COMMANDS),
     id: randomBytes(4),
-    imageBuf: new Array()
+    imageBuf: new Array(),
+    lastPulse: Date.now(),
   };
+  session.timeout = createSessionTimeout(session);
+  session.timeout();
+  return session;
+}
+
+async function removeSession(id) {
+  let index = sessions.findIndex(session => id === session.id);
+  await sessions[index].sock.close();
+  sessions.splice(index, 1);
 }
 
 async function getModelList() {
@@ -75,6 +101,17 @@ function sendResponse(sock, remote, payload) {
 commandMap.set(commands.discover, (sock, remote) => {
   const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.discover, "hex")]);
 	return sendResponse(sock, remote, header);
+});
+
+commandMap.set(commands.heartbeat, (sock, remote) => {
+  const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.heartbeat, "hex")]);
+
+  let data = Buffer.from(JSON.stringify(currentModel.name));
+  let length = Buffer.alloc(2);
+  length.writeInt16BE(data.length);
+  let response = Buffer.concat([header, length, data]);
+ 
+	return sendResponse(sock, remote, response);
 });
 
 commandMap.set(commands.getModels, async (sock, remote) => {
@@ -129,6 +166,19 @@ commandMap.set(commands.startSession, async (sock, remote) => {
 	return sendResponse(sock, remote, response);
 });
 
+commandMap.set(commands.querySession, async (sock, remote, message) => {
+  const header = Buffer.concat([Buffer.from(commands.unique, "hex"), Buffer.from(commands.querySession, "hex")]);
+	const headerLength = getByteLength(commands.unique) + getByteLength(commands.querySession);
+  let id = message.slice(headerLength, headerLength + 4);
+  let session = sessions.find(session => id.equals(session.id));
+  let data = Buffer.alloc(1); 
+  if(session) data[0] = 1;
+  else data[0] = 0;
+
+  let response = Buffer.concat([header, data]);
+ 
+	return sendResponse(sock, remote, response);
+});
 let imageArrays = new Array();
 
 function findImageArray(sourceIP) {
@@ -195,6 +245,7 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
   let sessionId = message.slice(headerLength - 4, headerLength);
   sessionId.copy(header, headerLength - 4);
   let session = findSession(sessionId);
+  session.lastPulse = Date.now();
   
   let payload;
   let array;
@@ -347,7 +398,7 @@ async function initSocket(bindingData, commandList) {
 async function main() {
   serverSocket = await initSocket({address: "0.0.0.0", port: SERVER_PORT}, VALID_SERVER_COMMANDS);
   models = await getModelList();
-  currentModel = models.find(model => model.name === "reefscape_v4");
+  currentModel = models.find(model => model.name === "reefscape_v5");
   yolov8.warmupModel(path.resolve(__dirname, MODEL_LOCATION, currentModel.path));
 
   // MJPG Stream Test
