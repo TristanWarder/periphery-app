@@ -1,1 +1,1 @@
-docker run --restart unless-stopped --name periphery-dev --net=host --privileged -v ~/container-dir:/home/periphery/shared-dir -v /dev/bus/usb:/dev/bus/usb -v /tmp/argus_socket:/tmp/argus_socket -d -t periphery-dev:latest bash
+docker run --restart unless-stopped --name periphery-dev --gpus all --net=host --privileged -v ~/container-dir:/home/periphery/shared-dir -v /dev/bus/usb:/dev/bus/usb -v /tmp/argus_socket:/tmp/argus_socket -d -t periphery-dev:latest bash

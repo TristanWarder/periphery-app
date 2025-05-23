@@ -1,0 +1,12 @@
+[
+	{
+		"name":"reefscape_capped_v2",
+		"path":"./reefscape_capped_v2.engine",
+		"type":"yolo-detect-engine"
+	},
+	{
+		"name":"skeleton_nano",
+		"path":"./yolo11n-pose.engine",
+		"type":"yolo-pose-engine"
+	}
+]

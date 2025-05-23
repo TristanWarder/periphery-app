@@ -1,7 +1,8 @@
-const yolov8 = require("bindings")("yolov8-runner");
+const yolo11 = require("bindings")("yolo11-runner");
 
 async function main() {
-  yolov8.exportEngine(process.argv[2]);
+  console.log(process.argv[2]);
+  yolo11.exportEngine(process.argv[2]);
 }
 
 main();

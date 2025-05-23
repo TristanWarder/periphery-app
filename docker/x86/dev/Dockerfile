@@ -1,5 +1,5 @@
 # Use Nvidia L4T Jetpack image as a base
-FROM nvcr.io/nvidia/tensorrt:25.01-py3
+FROM nvcr.io/nvidia/tensorrt:24.08-py3
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Update packages

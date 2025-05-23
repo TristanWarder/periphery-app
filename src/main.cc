@@ -3,10 +3,10 @@
 #include <assert.h>
 #include <node_api.h>
 #include <stdio.h>
-#include "yolov8.hpp"
+#include "yolo11.hpp"
 #include "opencv2/opencv.hpp"
 
-YOLOv8* model = nullptr;
+YOLO11* model = nullptr;
 
 static napi_value WarmupModel(napi_env env, napi_callback_info info) {
   napi_status status;
@@ -30,7 +30,7 @@ static napi_value WarmupModel(napi_env env, napi_callback_info info) {
     return NULL;
   }
 
-  char enginePath[100];
+  char enginePath[200];
   size_t pathLength = 0;
   status = napi_get_value_string_utf8(env, args[0], enginePath, 100, &pathLength);
   assert(status == napi_ok);
@@ -40,7 +40,7 @@ static napi_value WarmupModel(napi_env env, napi_callback_info info) {
   }
   auto path = std::string(enginePath);
   std::cout << "Path is: " << enginePath << std::endl;
-  model = new YOLOv8(path);
+  model = new YOLO11(path);
   model->make_pipe(true);
   
   assert(status == napi_ok);
@@ -75,9 +75,9 @@ static napi_value ExportEngine(napi_env env, napi_callback_info info) {
   status = napi_get_value_string_utf8(env, args[0], onnxPath, 100, &pathLength);
   assert(status == napi_ok);
 
-  auto path = std::string(onnxPath);
+  std::string path(onnxPath);
 
-  YOLOv8::generateEngine(path);
+  YOLO11::generateEngine(path);
   
   assert(status == napi_ok);
 

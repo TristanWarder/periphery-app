@@ -1,13 +1,13 @@
-//
-// Created by ubuntu on 3/16/23.
-//
+#pragma once 
 
-#ifndef JETSON_DETECT_COMMON_HPP
-#define JETSON_DETECT_COMMON_HPP
+#ifdef CUDA_PRESENT
 #include "NvInfer.h"
+#endif
 #include "opencv2/opencv.hpp"
 #include <sys/stat.h>
 #include <unistd.h>
+
+#ifdef CUDA_PRESENT
 
 #define CHECK(call)                                                                                                    \
     do {                                                                                                               \
@@ -78,15 +78,15 @@ inline int type_to_size(const nvinfer1::DataType& dataType)
         case nvinfer1::DataType::kFP8:
             return 1;
             break;
-        case nvinfer1::DataType::kBF16:
-            return 2;
-            break;
+//        case nvinfer1::DataType::kBF16:
+//            return 2;
+//            break;
         case nvinfer1::DataType::kINT32:
             return 4;
             break;
-        case nvinfer1::DataType::kINT64:
-            return 8;
-            break;
+//        case nvinfer1::DataType::kINT64:
+//            return 8;
+//            break;
         case nvinfer1::DataType::kINT8:
             return 1;
             break;
@@ -101,6 +101,8 @@ inline int type_to_size(const nvinfer1::DataType& dataType)
             break;
     }
 }
+
+#endif
 
 inline static float clamp(float val, float min, float max)
 {
@@ -135,12 +137,14 @@ inline bool IsFolder(const std::string& path)
 }
 
 namespace det {
+#ifdef CUDA_PRESENT
 struct Binding {
     size_t         size  = 1;
     size_t         dsize = 1;
     nvinfer1::Dims dims;
     std::string    name;
 };
+#endif // CUDA_PRESENT
 
 struct DetectObject {
     cv::Rect_<float> rect;
@@ -163,4 +167,3 @@ struct PreParam {
     float width  = 0;
 };
 }  // namespace det
-#endif  // JETSON_DETECT_COMMON_HPP

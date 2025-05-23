@@ -1,54 +1,7 @@
-//
-// Created by ubuntu on 3/16/23.
-//
-#ifndef JETSON_DETECT_YOLOV8_HPP
-#define JETSON_DETECT_YOLOV8_HPP
-#include "NvInferPlugin.h"
-#include "NvOnnxParser.h"
-#include "common.hpp"
-#include <fstream>
-using namespace det;
-using namespace nvonnxparser;
+#include "yolo11.hpp"
 
-class YOLOv8 {
-public:
-    explicit YOLOv8(const std::string& engine_file_path);
-    ~YOLOv8();
 
-    void                 make_pipe(bool warmup = true);
-    static bool                 generateEngine(std::string onnxPath);
-    void                 copy_from_Mat(const cv::Mat& image);
-    void                 copy_from_Mat(const cv::Mat& image, cv::Size& size);
-    void                 letterbox(const cv::Mat& image, cv::Mat& out, cv::Size& size);
-    void                 infer();
-    /*void                 detectPostprocess(std::vector<DetectObject>& objs);*/
-
-    void                 detectPostprocess(std::vector<DetectObject>& objs, float score_thres = 0.25f, float iou_thres = 0.65f, int topk = 100);
-    void                 posePostprocess(std::vector<PoseObject>& objs, float score_thres = 0.25f, float iou_thres = 0.65f, int topk = 100);
-    // static void          draw_objects(const cv::Mat&                                image,
-    //                                   cv::Mat&                                      res,
-    //                                   const std::vector<DetectObject>&                    objs,
-    //                                   const std::vector<std::string>&               CLASS_NAMES,
-    //                                   const std::vector<std::vector<unsigned int>>& COLORS);
-    int                  num_bindings;
-    int                  num_inputs  = 0;
-    int                  num_outputs = 0;
-    std::vector<Binding> input_bindings;
-    std::vector<Binding> output_bindings;
-    std::vector<void*>   host_ptrs;
-    std::vector<void*>   device_ptrs;
-
-    PreParam pparam;
-
-private:
-    nvinfer1::ICudaEngine*       engine  = nullptr;
-    nvinfer1::IRuntime*          runtime = nullptr;
-    nvinfer1::IExecutionContext* context = nullptr;
-    cudaStream_t                 stream  = nullptr;
-    Logger                       gLogger{nvinfer1::ILogger::Severity::kERROR};
-};
-
-YOLOv8::YOLOv8(const std::string& engine_file_path)
+YOLO11::YOLO11(const std::string& engine_file_path)
 {
     std::ifstream file(engine_file_path, std::ios::binary);
     assert(file.good());
@@ -100,7 +53,7 @@ YOLOv8::YOLOv8(const std::string& engine_file_path)
     }
 }
 
-YOLOv8::~YOLOv8()
+YOLO11::~YOLO11()
 {
     delete this->context;
     delete this->engine;
@@ -114,7 +67,7 @@ YOLOv8::~YOLOv8()
         CHECK(cudaFreeHost(ptr));
     }
 }
-void YOLOv8::make_pipe(bool warmup)
+void YOLO11::make_pipe(bool warmup)
 {
 
     for (auto& bindings : this->input_bindings) {
@@ -149,11 +102,11 @@ void YOLOv8::make_pipe(bool warmup)
     }
 }
 
-bool YOLOv8::generateEngine(std::string onnxPath) {
+bool YOLO11::generateEngine(std::string onnxPath) {
 
   Logger logger{nvinfer1::ILogger::Severity::kERROR};
   nvinfer1::IBuilder* builder = nvinfer1::createInferBuilder(logger);
-  nvinfer1::INetworkDefinition* network = builder->createNetworkV2(1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED));
+  nvinfer1::INetworkDefinition* network = builder->createNetworkV2(1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH));
   nvonnxparser::IParser* parser = createParser(*network, logger);
   bool result = parser->parseFromFile(onnxPath.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kINFO));
   std::cout << "Beginning engine generation of model: " << onnxPath << "..." << std::endl;
@@ -182,7 +135,7 @@ bool YOLOv8::generateEngine(std::string onnxPath) {
   return true;
 }
 
-void YOLOv8::letterbox(const cv::Mat& image, cv::Mat& out, cv::Size& size)
+void YOLO11::letterbox(const cv::Mat& image, cv::Mat& out, cv::Size& size)
 {
     const float inp_h  = size.height;
     const float inp_w  = size.width;
@@ -221,7 +174,7 @@ void YOLOv8::letterbox(const cv::Mat& image, cv::Mat& out, cv::Size& size)
     this->pparam.width  = width;
 }
 
-void YOLOv8::copy_from_Mat(const cv::Mat& image)
+void YOLO11::copy_from_Mat(const cv::Mat& image)
 {
     cv::Mat  nchw;
     auto&    in_binding = this->input_bindings[0];
@@ -236,7 +189,7 @@ void YOLOv8::copy_from_Mat(const cv::Mat& image)
         this->device_ptrs[0], nchw.ptr<float>(), nchw.total() * nchw.elemSize(), cudaMemcpyHostToDevice, this->stream));
 }
 
-void YOLOv8::copy_from_Mat(const cv::Mat& image, cv::Size& size)
+void YOLO11::copy_from_Mat(const cv::Mat& image, cv::Size& size)
 {
     cv::Mat nchw;
     auto&    in_binding = this->input_bindings[0];
@@ -246,7 +199,7 @@ void YOLOv8::copy_from_Mat(const cv::Mat& image, cv::Size& size)
         this->device_ptrs[0], nchw.ptr<float>(), nchw.total() * nchw.elemSize(), cudaMemcpyHostToDevice, this->stream));
 }
 
-void YOLOv8::infer()
+void YOLO11::infer()
 {
     this->context->enqueueV3(this->stream);
     for (int i = 0; i < this->num_outputs; i++) {
@@ -257,42 +210,7 @@ void YOLOv8::infer()
     cudaStreamSynchronize(this->stream);
 }
 
-/*void YOLOv8::detectPostprocess(std::vector<DetectObject>& objs)*/
-/*{*/
-/*    objs.clear();*/
-/*    int*  num_dets = static_cast<int*>(this->host_ptrs[0]);*/
-/*    auto* boxes    = static_cast<float*>(this->host_ptrs[1]);*/
-/*    auto* scores   = static_cast<float*>(this->host_ptrs[2]);*/
-/*    int*  labels   = static_cast<int*>(this->host_ptrs[3]);*/
-/*    auto& dw       = this->pparam.dw;*/
-/*    auto& dh       = this->pparam.dh;*/
-/*    auto& width    = this->pparam.width;*/
-/*    auto& height   = this->pparam.height;*/
-/*    auto& ratio    = this->pparam.ratio;*/
-/*    std::cout << "Detections: " << num_dets[0] << std::endl;*/
-/*    for (int i = 0; i < num_dets[0]; i++) {*/
-/*        float* ptr = boxes + i * 4;*/
-/*        float x0 = *ptr++ - dw;*/
-/*        float y0 = *ptr++ - dh;*/
-/*        float x1 = *ptr++ - dw;*/
-/*        float y1 = *ptr - dh;*/
-/**/
-/*        x0 = clamp(x0 * ratio, 0.f, width);*/
-/*        y0 = clamp(y0 * ratio, 0.f, height);*/
-/*        x1 = clamp(x1 * ratio, 0.f, width);*/
-/*        y1 = clamp(y1 * ratio, 0.f, height);*/
-/*        DetectObject obj;*/
-/*        obj.rect.x      = x0;*/
-/*        obj.rect.y      = y0;*/
-/*        obj.rect.width  = x1 - x0;*/
-/*        obj.rect.height = y1 - y0;*/
-/*        obj.prob        = *(scores + i);*/
-/*        obj.label       = *(labels + i);*/
-/*        objs.push_back(obj);*/
-/*    }*/
-/*}*/
-
-void YOLOv8::detectPostprocess(std::vector<DetectObject>& objs, float score_thres, float iou_thres, int topk)
+void YOLO11::detectPostprocess(std::vector<DetectObject>& objs, float score_thres, float iou_thres, int topk)
 {
     objs.clear();
     auto num_channels = this->output_bindings[0].dims.d[1];
@@ -365,7 +283,7 @@ void YOLOv8::detectPostprocess(std::vector<DetectObject>& objs, float score_thre
     }
 }
 
-void YOLOv8::posePostprocess(std::vector<PoseObject>& objs, float score_thres, float iou_thres, int topk)
+void YOLO11::posePostprocess(std::vector<PoseObject>& objs, float score_thres, float iou_thres, int topk)
 {
     objs.clear();
     auto num_channels = this->output_bindings[0].dims.d[1];
@@ -447,5 +365,3 @@ void YOLOv8::posePostprocess(std::vector<PoseObject>& objs, float score_thres, f
         cnt += 1;
     }
 }
-
-#endif  // JETSON_DETECT_YOLOV8_HPP

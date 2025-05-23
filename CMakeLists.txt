@@ -1,12 +1,13 @@
 cmake_minimum_required(VERSION 3.1)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(CMAKE_CUDA_ARCHITECTURES 60 61 62 70 72 75 86)
 set(CMAKE_CUDA_COMPILER /usr/local/cuda/bin/nvcc)
 
 # Name of the project (will be the name of the plugin)
-project(yolov8-runner LANGUAGES CXX CUDA)
+project(yolo11-runner LANGUAGES CXX CUDA)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -O3")
 set(CMAKE_CXX_STANDARD 14)
@@ -33,7 +34,7 @@ message(STATUS "TensorRT Libs: \n${TensorRT_LIBRARIES}\n")
 message(STATUS "TensorRT Headers: \n${TensorRT_INCLUDE_DIRS}\n")
 
 # Build a shared library named after the project from the files in `src/`
-file(GLOB SOURCE_FILES "src/*.cc" "src/*.h")
+file(GLOB SOURCE_FILES "src/*.cc" "src/*.h", "src/yolo11.cpp")
 add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES} ${CMAKE_JS_SRC})
 
 # Gives our library file a .node extension without any "lib" prefix
@@ -46,3 +47,4 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_JS_INC} ${CUDA_INCLUD
 # Essential library files to link to a node addon
 # You should add this line in every CMake.js based project
 target_link_libraries(${PROJECT_NAME} ${CMAKE_JS_LIB} nvinfer nvinfer_plugin nvonnxparser ${CUDA_LIBRARIES} ${OpenCV_LIBS})
+target_compile_definitions(${PROJECT_NAME} PUBLIC CUDA_PRESENT=$(CUDA_PRESENT))

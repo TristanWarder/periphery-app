@@ -262,15 +262,15 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
     let frame = frames[frames.length - 1];
     let results = null;
     try {
-      let inferResult = yolov8.inference(frame);
+      let inferResult = yolo11.inference(frame);
       if(currentModel.type === "yolo-detect-engine") {
-        results = yolov8.detectPostprocess();
+        results = yolo11.detectPostprocess();
       } else if(currentModel.type === "yolo-pose-engine") {
-        results = yolov8.posePostprocess();
+        results = yolo11.posePostprocess();
       }
 
       //console.log(results);
-      //results = yolov8.posePostprocess();
+      //results = yolo11.posePostprocess();
       //if(results[0].kps) {
         //console.log(results[0].kps.length);
         //results[0].kps.forEach(point => console.log(point));
@@ -304,7 +304,7 @@ commandMap.set(commands.inference, async (sock, remote, message) => {
 });
 
 
-const yolov8 = require("bindings")("yolov8-runner");
+const yolo11 = require("bindings")("yolo11-runner");
 
 // Delay promise wrapper
 function delay(ms) {
@@ -398,8 +398,8 @@ async function initSocket(bindingData, commandList) {
 async function main() {
   serverSocket = await initSocket({address: "0.0.0.0", port: SERVER_PORT}, VALID_SERVER_COMMANDS);
   models = await getModelList();
-  currentModel = models.find(model => model.name === "reefscape_v5");
-  yolov8.warmupModel(path.resolve(__dirname, MODEL_LOCATION, currentModel.path));
+  currentModel = models.find(model => model.name === "reefscape_capped_v2");
+  yolo11.warmupModel(path.resolve(__dirname, MODEL_LOCATION, currentModel.path));
 
   // MJPG Stream Test
   // let result = await reader.read();
@@ -412,7 +412,7 @@ async function main() {
   //   if (frames.length) streamArray = new Array();
   //   else continue;
   //   let image = frames[frames.length - 1];
-  //   yolov8.inference(image);
+  //   yolo11.inference(image);
   // }
   // console.log("Stream ended!");
 }
